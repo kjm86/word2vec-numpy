@@ -5,7 +5,7 @@ from typing import Set, Dict, List
 class Word2VecModel:
     def __init__(self, vocabulary: Set[str], emb_size: int):
         """
-        :param vocabulary: A set of words (tokens) in the vocabulary
+        :param vocabulary: A set of unique words (tokens) in the vocabulary
         :param emb_size: The size of the embedding
         """
         self.vocab_map: Dict[str, int] = dict(zip(vocabulary, range(len(vocabulary))))
@@ -27,12 +27,24 @@ class Word2VecModel:
         :param seq: The sequence of string tokens
         :return: A matrix containing the one-hot encoding of the provided sequence
         """
-        # ignore tokens that are not in the vocabulary
-        valid_tokens = filter(lambda token: token in self.vocab_map, seq)
+        # make sure all words are in the vocabulary
+        if any(token not in self.vocab_map for token in seq):
+            raise KeyError(f"Unknown token")
 
-        int_tokens: np.ndarray = np.array(list(map(lambda token: self.vocab_map[token], valid_tokens)))
+        int_tokens: np.ndarray = np.array(list(map(lambda token: self.vocab_map[token], seq)))
         n = int_tokens.size
 
         one_hot: np.ndarray = np.zeros((n, self.vocab_size))
         one_hot[np.arange(n), int_tokens] = 1
         return one_hot
+
+    def get_embeddings(self, seq: List[str]) -> np.ndarray:
+        """
+        Calculates the embeddings for the provided sequence of string tokens.
+        :param seq: The sequence of string tokens
+        :return: A matrix of size len(seq) by emb_size, containing token embeddings
+        """
+
+        one_hot: np.ndarray = self.one_hot_encode(seq)
+        emb: np.ndarray = one_hot @ self.input_word_weights
+        return emb
