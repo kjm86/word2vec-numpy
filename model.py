@@ -1,3 +1,6 @@
+import os.path
+from os import PathLike
+
 import numpy as np
 from typing import Set, Dict, List
 
@@ -20,8 +23,8 @@ class Word2VecModel:
         """
         Initialises the "input" and "output" representation matrices, as described in the paper.
         """
-        self.input_word_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
-        self.output_word_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
+        self.input_token_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
+        self.output_token_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
 
     def get_int_tokens(self, seq: List[str]) -> np.ndarray:
         """
@@ -42,7 +45,7 @@ class Word2VecModel:
         :return: A matrix of size len(seq) by emb_size, containing token embeddings
         """
         int_tokens: np.ndarray = self.get_int_tokens(seq)
-        emb: np.ndarray = self.input_word_weights[int_tokens]
+        emb: np.ndarray = self.input_token_weights[int_tokens]
         return emb
 
     def _calculate_frequencies(self, int_tokens: List[np.ndarray]) -> np.ndarray:
@@ -86,13 +89,14 @@ class Word2VecModel:
     def _sigmoid(x):
         return 1 / (1 + np.exp(-x))
 
-    def train(self, train_data: List[List[str]], iter_num: int, negative_sample_num: int = 15, context_size: int = 5, subsampling_threshold: float = 0.005) -> None:
+    def train(self, train_data: List[List[str]], iter_num: int, negative_sample_num: int = 15, context_size: int = 5, learning_rate: float = 0.05, subsampling_threshold: float = 0.005) -> None:
         """
         Main training loop. Performs the specified number of training iterations.
         :param train_data: A list of sentences, divided into lists of string tokens
         :param iter_num: The number of training iterations
         :param negative_sample_num: The number of negative samples for each output/input pair (default: 15)
         :param context_size: The size of the context window (default: 5)
+        :param learning_rate: Learning rate for the weight adjustment (default: 0.05)
         :param subsampling_threshold: The frequency threshold below which tokens will never get discarded (default: 0.005)
         """
         all_int_tokens: List[np.ndarray] = [self.get_int_tokens(seq) for seq in train_data]
@@ -104,38 +108,61 @@ class Word2VecModel:
 
         for it in range(iter_num):
             print("Iteration", it + 1)
-            for int_tokens in tqdm.tqdm(all_int_tokens):
-                token_discard_prob = discard_probabilities[int_tokens]
-                # has True if token was discarded, and False otherwise
-                discarded: np.ndarray = np.random.random((len(int_tokens),)) < token_discard_prob
 
-                subsampled_int_tokens: np.ndarray = int_tokens[~discarded]
-                n: int = subsampled_int_tokens.shape[0]
+            rolling_avg_reward: float = 0
+            with tqdm.tqdm(all_int_tokens) as t:
+                for int_tokens in t:
+                    token_discard_prob = discard_probabilities[int_tokens]
+                    # has True if token was discarded, and False otherwise
+                    discarded: np.ndarray = np.random.random((len(int_tokens),)) < token_discard_prob
 
-                # if at most one token, then we skip
-                if n <= 1:
-                    continue
+                    subsampled_int_tokens: np.ndarray = int_tokens[~discarded]
+                    n: int = subsampled_int_tokens.shape[0]
 
-                input_representations: np.ndarray = self.input_word_weights[subsampled_int_tokens]
-                output_representations: np.ndarray = self.output_word_weights[subsampled_int_tokens]
+                    # if at most one token, then we skip
+                    if n <= 1:
+                        continue
 
-                loss = 0
+                    input_representations: np.ndarray = self.input_token_weights[subsampled_int_tokens]
+                    output_representations: np.ndarray = self.output_token_weights[subsampled_int_tokens]
 
-                for i in range(n):
-                    # select the context window
-                    positive_sample_representations: np.ndarray = np.concat((output_representations[i - context_size:i],
-                                                                             output_representations[i + 1:i + context_size + 1]))
-                    # actual context size, takes into account the truncation of context at the beginning and end of sentence
-                    actual_context_size = positive_sample_representations.shape[0]
+                    input_token_weight_errors: np.ndarray = np.zeros_like(self.input_token_weights)
+                    output_token_weight_errors: np.ndarray = np.zeros_like(self.output_token_weights)
 
-                    # generate negative_sample_num samples for each output token
-                    negative_sample_tokens: np.ndarray = np.random.choice(self.vocab_size, size=negative_sample_num * actual_context_size, p=neg_sampling_distr)
-                    negative_sample_representations: np.ndarray = self.output_word_weights[negative_sample_tokens]
+                    reward: float = 0
 
-                    positive_sample_output = self._sigmoid(input_representations[i] * positive_sample_representations)
-                    negative_sample_output = self._sigmoid(-input_representations[i] * negative_sample_representations)
+                    for i, input_token in zip(range(n), subsampled_int_tokens):
+                        # select the context window
+                        positive_sample_tokens: np.ndarray = np.concat((subsampled_int_tokens[i - context_size:i],
+                                                                        subsampled_int_tokens[i + 1:i + context_size + 1]))
+                        positive_sample_representations: np.ndarray = np.concat((output_representations[i - context_size:i],
+                                                                                 output_representations[i + 1:i + context_size + 1]))
+                        # actual context size, takes into account the truncation of window at the beginning and end of sentence
+                        actual_context_size = positive_sample_representations.shape[0]
 
-                    loss += np.sum(positive_sample_output)
-                    loss += np.sum(negative_sample_output)
+                        # generate negative_sample_num negative samples for each output token
+                        negative_sample_tokens: np.ndarray = np.random.choice(self.vocab_size, size=negative_sample_num * actual_context_size, p=neg_sampling_distr)
+                        negative_sample_representations: np.ndarray = self.output_token_weights[negative_sample_tokens]
 
-                loss /= n
+                        positive_sample_output: np.ndarray = self._sigmoid(input_representations[i] @ positive_sample_representations.T)
+                        negative_sample_output: np.ndarray = self._sigmoid(-input_representations[i] @ negative_sample_representations.T)
+
+                        # maximise the log of sigmoid values
+                        input_token_weight_errors[input_token] += (1 - positive_sample_output) @ positive_sample_representations
+                        input_token_weight_errors[input_token] += -(1 - negative_sample_output) @ negative_sample_representations
+
+                        # doing this instead of the standard += to count duplicate indices
+                        np.add.at(output_token_weight_errors, positive_sample_tokens, np.outer(1 - positive_sample_output, input_representations[i]))
+                        np.add.at(output_token_weight_errors, negative_sample_tokens, np.outer(-(1 - negative_sample_output), input_representations[i]))
+
+                        reward += np.sum(positive_sample_output)
+                        reward += np.sum(negative_sample_output)
+
+                    reward /= n
+
+                    rolling_avg_reward = 0.95 * rolling_avg_reward + 0.05 * reward
+
+                    t.set_postfix(rolling_average_reward=rolling_avg_reward)
+
+                    self.input_token_weights += learning_rate * input_token_weight_errors / n
+                    self.output_token_weights += learning_rate * output_token_weight_errors / n
