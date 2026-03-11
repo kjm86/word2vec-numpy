@@ -1,5 +1,5 @@
-import os.path
 from os import PathLike
+import pickle
 
 import numpy as np
 from typing import Set, Dict, List
@@ -8,14 +8,22 @@ import tqdm
 
 
 class Word2VecModel:
-    def __init__(self, vocabulary: Set[str], emb_size: int):
+    def __init__(self, vocabulary: Set[str]|Dict[str, int], emb_size: int, input_token_weights: np.ndarray = None, output_token_weights: np.ndarray = None):
         """
-        :param vocabulary: A set of unique words (tokens) in the vocabulary
+        :param vocabulary: A set or mapping of unique words (tokens) in the vocabulary
         :param emb_size: The size of the embedding
+        :param input_token_weights: Weights for the "input" representation matrix (optional)
+        :param output_token_weights: Weights for the "output" representation matrix (optional)
         """
-        self.vocab_map: Dict[str, int] = dict(zip(vocabulary, range(len(vocabulary))))
+        if isinstance(vocabulary, dict):
+            self.vocab_map = vocabulary
+        else:
+            self.vocab_map: Dict[str, int] = dict(zip(vocabulary, range(len(vocabulary))))
         self.vocab_size: int = len(vocabulary)
         self.emb_size: int = emb_size
+
+        self.input_token_weights: np.ndarray = input_token_weights
+        self.output_token_weights: np.ndarray = output_token_weights
 
         self._init_weights()
 
@@ -23,8 +31,10 @@ class Word2VecModel:
         """
         Initialises the "input" and "output" representation matrices, as described in the paper.
         """
-        self.input_token_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
-        self.output_token_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
+        if self.input_token_weights is None:
+            self.input_token_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
+        if self.output_token_weights is None:
+            self.output_token_weights: np.ndarray = np.random.uniform(low=-0.5 / self.emb_size, high=0.5 / self.emb_size, size=(self.vocab_size, self.emb_size))
 
     def get_int_tokens(self, seq: List[str]) -> np.ndarray:
         """
@@ -84,6 +94,32 @@ class Word2VecModel:
         discard_probabilities: np.ndarray = 1 - np.sqrt(t / np.maximum(freq, t))
 
         return discard_probabilities
+
+    def save(self, path: PathLike) -> None:
+        """
+        Saves the vocabulary map and embeddings to a file
+        :param path: Path to the file to which the model should be saved
+        """
+        with open(path, "wb+") as file:
+            pickle.dump({
+                            "vocabulary": self.vocab_map,
+                            "input_weights": self.input_token_weights,
+                            "output_weights": self.output_token_weights,
+                            "embedding_size": self.emb_size
+                        },
+                file)
+
+    @staticmethod
+    def load(path: PathLike) -> "Word2VecModel":
+        """
+        Loads the saved model
+        :param path: Path to the file containing the model
+        """
+        with open(path, "rb") as file:
+            data = pickle.load(file)
+
+        model = Word2VecModel(data["vocabulary"], data["embedding_size"], input_token_weights=data["input_weights"], output_token_weights=data["output_weights"])
+        return model
 
     @staticmethod
     def _sigmoid(x):
