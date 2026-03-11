@@ -7,8 +7,9 @@ from model import Word2VecModel
 
 N = 50000 # number of samples
 ITER_NUM = 4 # number of training iterations
-EMB_SIZE = 150 # embedding size
+EMB_SIZE = 100 # embedding size
 LR = 0.1 # learning rate
+NEGATIVE_SAMPLES = 15 # number of negative samples
 DATA_PATH = "./wiki2.txt"
 MODEL_PATH = "./saved_model"
 
@@ -23,15 +24,14 @@ def load_full_sentences(path: PathLike) -> List[str]:
 
 def get_word_sequences(sentences: List[str]) -> List[List[str]]:
     """
-    Get the list of words (tokens) for every sentence. Removes anything that isn't alphanumeric characters and converts all characters to lowercase.
+    Get the list of words (tokens) for every sentence. Removes anything that isn't alphabetic characters and converts all characters to lowercase.
     :param sentences: List of unprocessed sentences
     :return: List containing lists of lowercase words
     """
     word_seqs = []
     for sentence in sentences:
         sentence = sentence.lower()
-        sentence = "".join(c for c in sentence if (c.isascii() and c.isalnum()) or c.isspace())
-        words = sentence.split()
+        words = [word for word in sentence.split() if word.isascii() and word.isalpha()]
         if len(words) > 0:
             word_seqs.append(words)
     return word_seqs
@@ -52,7 +52,7 @@ def main():
 
     model = Word2VecModel(vocabulary, EMB_SIZE)
 
-    model.train(training_data, ITER_NUM, learning_rate=LR)
+    model.train(training_data, ITER_NUM, learning_rate=LR, negative_sample_num=NEGATIVE_SAMPLES)
     model.save(MODEL_PATH)
 
 if __name__ == "__main__":
