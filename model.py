@@ -72,6 +72,7 @@ class Word2VecModel:
         emb: np.ndarray = self.input_token_weights[int_token]
         return emb
 
+    @staticmethod
     def _cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray):
         return (emb1 @ emb2.T) / (np.linalg.norm(emb1, axis=-1) * np.linalg.norm(emb2, axis=-1))
 

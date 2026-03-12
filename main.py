@@ -39,7 +39,7 @@ def get_word_sequences(sentences: List[str]) -> List[List[str]]:
 
 def main():
     all_data = get_word_sequences(load_full_sentences(DATA_PATH))
-    # discarding short sequences, because the dataset contains also section headers, which aren't real sentences
+    # discarding short sequences, because the dataset also contains section headers, which aren't real sentences
     all_data = [seq for seq in all_data if len(seq) >= 5]
     training_data = random.choices(all_data, k=N)
 
