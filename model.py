@@ -19,6 +19,10 @@ class Word2VecModel:
             self.vocab_map = vocabulary
         else:
             self.vocab_map: Dict[str, int] = dict(zip(vocabulary, range(len(vocabulary))))
+
+        # create a reverse dictionary for retrieving strings
+        self.reverse_vocab_map: Dict[int, str] = dict(zip(self.vocab_map.values(), self.vocab_map.keys()))
+
         self.vocab_size: int = len(vocabulary)
         self.emb_size: int = emb_size
 
@@ -57,6 +61,32 @@ class Word2VecModel:
         int_tokens: np.ndarray = self.get_int_tokens(seq)
         emb: np.ndarray = self.input_token_weights[int_tokens]
         return emb
+
+    def get_embedding(self, token: str) -> np.ndarray:
+        """
+        Calculates the embedding for the provided string token.
+        :param token: The token
+        :return: A NumPy array of size emb_size, containing token embeddings
+        """
+        int_token: int = self.get_int_tokens([token]).item()
+        emb: np.ndarray = self.input_token_weights[int_token]
+        return emb
+
+    def _cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray):
+        return (emb1 @ emb2.T) / (np.linalg.norm(emb1, axis=-1) * np.linalg.norm(emb2, axis=-1))
+
+    def get_top_k_similar(self, emb: np.ndarray, k: int) -> List[str]:
+        """
+        Returns top k words similar to the provided embedding, ranked by cosine similarity.
+        :param emb: The reference embedding
+        :param k: The number of top similar words
+        :return: A list of string tokens that are the most similar to the provided embedding
+        """
+        similarities: np.ndarray = self._cosine_similarity(emb, self.input_token_weights)
+        # sort similarities in decreasing order
+        ranks: np.ndarray = np.argsort(-similarities, axis=0)
+        top_k: List[str] = [self.reverse_vocab_map[idx] for idx in ranks[:k]]
+        return top_k
 
     def _calculate_frequencies(self, int_tokens: List[np.ndarray]) -> np.ndarray:
         """
@@ -188,8 +218,9 @@ class Word2VecModel:
                         np.add.at(self.output_token_weights, positive_sample_tokens, learning_rate * np.outer(1 - positive_sample_output, input_representation))
                         np.add.at(self.output_token_weights, negative_sample_tokens, learning_rate / negative_sample_num * np.outer(-(1 - negative_sample_output), input_representation))
 
-                        reward += np.sum(positive_sample_output)
-                        reward += np.sum(negative_sample_output) / negative_sample_num
+                        # the actual objective is the log of sigmoid values
+                        reward += np.sum(np.log(positive_sample_output))
+                        reward += np.sum(np.log(negative_sample_output)) / negative_sample_num
 
                     reward /= n
 

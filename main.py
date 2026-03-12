@@ -6,8 +6,8 @@ from model import Word2VecModel
 
 
 N = 50000 # number of samples
-ITER_NUM = 4 # number of training iterations
-EMB_SIZE = 100 # embedding size
+ITER_NUM = 5 # number of training iterations
+EMB_SIZE = 150 # embedding size
 LR = 0.1 # learning rate
 NEGATIVE_SAMPLES = 15 # number of negative samples
 DATA_PATH = "./wiki2.txt"
@@ -50,10 +50,10 @@ def main():
 
     print(f"Using {N} samples, containing {len(vocabulary)} different words")
 
-    model = Word2VecModel(vocabulary, EMB_SIZE)
+    w2v = Word2VecModel(vocabulary, EMB_SIZE)
 
-    model.train(training_data, ITER_NUM, learning_rate=LR, negative_sample_num=NEGATIVE_SAMPLES)
-    model.save(MODEL_PATH)
+    w2v.train(training_data, ITER_NUM, learning_rate=LR, negative_sample_num=NEGATIVE_SAMPLES)
+    w2v.save(MODEL_PATH)
 
 if __name__ == "__main__":
     main()
