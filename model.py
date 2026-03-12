@@ -73,7 +73,7 @@ class Word2VecModel:
         return emb
 
     @staticmethod
-    def _cosine_similarity(self, emb1: np.ndarray, emb2: np.ndarray):
+    def _cosine_similarity(emb1: np.ndarray, emb2: np.ndarray):
         return (emb1 @ emb2.T) / (np.linalg.norm(emb1, axis=-1) * np.linalg.norm(emb2, axis=-1))
 
     def get_top_k_similar(self, emb: np.ndarray, k: int) -> List[str]:
